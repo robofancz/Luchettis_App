@@ -1,9 +1,12 @@
-import tkinter as tk
-from tkinter import ttk
 import csv
 import os
+import json
+import tkinter as tk
+from tkinter import ttk
+from datetime import datetime, timedelta
 
 DATA_FILE = "table_data.csv"  # File to save and load table data
+MANAGER_BONUS_FILE = ""
 
 
 class App(tk.Tk):
@@ -11,19 +14,17 @@ class App(tk.Tk):
         super().__init__()
 
         self.title("Luchetti's App")
-        self.geometry("600x400")
+        self.geometry("800x500")
 
         self.pages = {}
 
         # Add all pages
         main_page = MainPage(self)
         self.add_page("Main", main_page)
-
-        self.add_page("Page1", OtherPage(self, "Page 1"))
+        self.add_page("Page1", BonusSheetPage(self))
         self.add_page("Page2", ExcelPage(self))
-        self.add_page("Page3", OtherPage(self, "Page 3"))
 
-        # Explicitly show the main page after adding all pages
+        # Show main page first
         self.show_page("Main")
 
     def add_page(self, name, page):
@@ -41,107 +42,298 @@ class MainPage(tk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
 
-        # Configure grid for the frame to expand and center content
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Add a content frame in the center
         content = tk.Frame(self)
         content.grid(row=0, column=0)
 
-        # Widgets inside the content frame
         label = tk.Label(content, text="Main Page", font=("Arial", 18))
         label.pack(pady=20)
+    #management
+        ttk.Button(content, text="Manager Bonuses", command=lambda: parent.show_page("Page1")).pack(pady=5)
+        ttk.Button(content, text="Employee Roster", command=lambda: parent.show_page("Page2")).pack(pady=5)
+        ttk.Button(content, text="Bonuses", command=lambda: parent.show_page("Page3")).pack(pady=5)
+        ttk.Button(content, text="HR", command=lambda: parent.show_page("Page4")).pack(pady=5)
+        ttk.Button(content, text="Farming Bonus calc.", command=lambda: parent.show_page("Page5")).pack(pady=5)
+        ttk.Button(content, text="Fund", command=lambda: parent.show_page("Page6")).pack(pady=5)
+#shiftlead
+        ttk.Button(content, text="Lucid Eats", command=lambda: parent.show_page("Page7")).pack(pady=5)
+        ttk.Button(content, text="Training", command=lambda: parent.show_page("Page8")).pack(pady=5)
+#employee
+        ttk.Button(content, text="Ingredience Bought", command=lambda: parent.show_page("Page9")).pack(pady=5)
+        ttk.Button(content, text="Cheatsheet", command=lambda: parent.show_page("Page10")).pack(pady=5)
 
-        button1 = ttk.Button(content, text="Go to Page 1", command=lambda: parent.show_page("Page1"))
-        button1.pack(pady=5)
-
-        button2 = ttk.Button(content, text="Go to Page 2 (Excel Sheet)", command=lambda: parent.show_page("Page2"))
-        button2.pack(pady=5)
-
-        button3 = ttk.Button(content, text="Go to Page 3", command=lambda: parent.show_page("Page3"))
-        button3.pack(pady=5)
 
 
+import tkinter as tk
+from tkinter import ttk
+from datetime import datetime, timedelta
+import json
+import os
 
-class OtherPage(tk.Frame):
-    def __init__(self, parent, page_name):
+class BonusSheetPage(tk.Frame):
+    DATA_FILE = "bonus_data.json"
+    TEMPLATE = [
+        ["Myles Cherry", "", "$3,000", "", "", "61709", "", ""],
+        ["Tommy Kade", "", "$3,000", "", "", "836", "", ""],
+        ["Carissa SL-Cherry", "", "$3,000", "", "", "64695", "", ""],
+        ["Luna Kade", "", "$2,000", "", "", "44157", "", ""],
+        ["BigKing HMDollas", "", "$2,000", "", "", "98814", "", ""],
+        ["Blake Cherry", "", "$2,000", "", "", "78694", "", ""],
+        ["Chip Monck", "", "$2,000", "", "", "8349", "", ""],
+        ["Ling Cherry", "", "$2,000", "", "", "83654", "", ""],
+        ["Jack Slater", "", "$2,000", "", "", "90464", "", ""],
+        ["Bart", "", "$2,000", "", "", "106531", "", ""],
+        ["Tommy Longsocks", "", "$2,000", "", "", "106783", "", ""]
+    ]
+    
+    def __init__(self, parent):
         super().__init__(parent)
 
-        # Configure grid for centering
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         content = tk.Frame(self)
-        content.grid(row=0, column=0)
-        content.grid_rowconfigure(0, weight=1)
-        content.grid_columnconfigure(0, weight=1)
+        content.grid(row=0, column=0, sticky="nsew")
 
-        label = tk.Label(content, text=f"{page_name}", font=("Arial", 18))
-        label.grid(row=0, column=0, pady=20)
+        self.start_date = datetime.today()
+        self.end_date = self.start_date + timedelta(days=6)
+        self.date_label = tk.Label(content, text=self.get_date_range(), font=("Arial", 14))
+        self.date_label.pack(pady=5)
 
-        back_button = ttk.Button(content, text="Back to Main Page", command=lambda: parent.show_page("Main"))
-        back_button.grid(row=1, column=0, pady=5)
+        label = tk.Label(content, text="Manager Bonuses", font=("Arial", 18))
+        label.pack(pady=10)
+
+        self.COLUMN_NAMES = ["Name", "Time Clocked (Hours)", "Tick Bonus Rate", "Bonus Amount", "Paid", "PayPal", "LOA", "Paid By"]
+
+        self.table = ttk.Treeview(content, columns=self.COLUMN_NAMES, show="headings", height=10)
+        self.table.pack(expand=True, fill="both")
+
+        for name in self.COLUMN_NAMES:
+            self.table.heading(name, text=name)
+            self.table.column(name, width=120)
+
+        self.history_data = []  # Stores past weeks' data
+
+        self.load_data()
+
+        self.table.bind("<Double-1>", self.edit_cell)
+        self.table.bind("<Delete>", self.delete_selected_rows)
+        self.table.bind("<BackSpace>", self.delete_selected_rows)
+        
+        ttk.Button(content, text="New Week", command=self.new_week).pack(pady=5)
+        ttk.Button(content, text="History", command=self.show_history).pack(pady=5)
+        ttk.Button(content, text="Recalculate", command=self.recalculate).pack(pady=5)
+        ttk.Button(content, text="Back to Main Page", command=lambda: parent.show_page("Main")).pack(pady=5)
+    
+    
+
+    def get_date_range(self):
+        return f"Week: {self.start_date.strftime('%m/%d/%Y')} - {self.end_date.strftime('%m/%d/%Y')}"
+
+    def new_week(self):
+        week_data = {
+            "date_range": self.get_date_range(),
+            "entries": [self.table.item(item, "values") for item in self.table.get_children()]
+        }
+        self.history_data.append(week_data)
+        self.save_data()
+
+        self.start_date += timedelta(weeks=1)
+        self.end_date += timedelta(weeks=1)
+        self.date_label.config(text=self.get_date_range())
+        
+        self.table.delete(*self.table.get_children())
+        for row in self.TEMPLATE:
+            self.table.insert("", "end", values=row)
+        
+        self.save_data()
+    
+    def show_history(self):
+        history_window = tk.Toplevel(self)
+        history_window.title("Bonus History")
+        history_window.geometry("700x500")
+
+        canvas = tk.Canvas(history_window)
+        scrollbar = ttk.Scrollbar(history_window, orient="vertical", command=canvas.yview)
+        frame = tk.Frame(canvas)
+        
+        frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        for week in self.history_data:
+            tk.Label(frame, text=week["date_range"], font=("Arial", 14, "bold")).pack(pady=5)
+            history_table = ttk.Treeview(frame, columns=self.COLUMN_NAMES, show="headings", height=5)
+            history_table.pack(fill="both", padx=10, pady=5)
+
+            for name in self.COLUMN_NAMES:
+                history_table.heading(name, text=name)
+                history_table.column(name, width=120)
+
+            for row in week["entries"]:
+                history_table.insert("", "end", values=row)
+    
+    def recalculate(self):
+        for item in self.table.get_children():
+            values = list(self.table.item(item, "values"))
+            try:
+                hours = float(values[1]) if values[1] else 0
+                rate = float(values[2].replace("$", "").replace(",", "")) if values[2] else 0
+                values[3] = f"${rate * 4 * hours:.2f}" if hours >= 10 else "$0.00"
+            except ValueError:
+                values[3] = "$0.00"
+            self.table.item(item, values=values)
+        self.save_data()
+    
+    def save_data(self):
+        data = {
+            "current_week": {
+                "start_date": self.start_date.strftime('%Y-%m-%d'),
+                "end_date": self.end_date.strftime('%Y-%m-%d'),
+                "entries": [self.table.item(item, "values") for item in self.table.get_children()]
+            },
+            "history": self.history_data
+        }
+        with open(self.DATA_FILE, "w") as f:
+            json.dump(data, f)
+    
+    def load_data(self):
+        if os.path.exists(self.DATA_FILE):
+            with open(self.DATA_FILE, "r") as f:
+                data = json.load(f)
+            
+            self.start_date = datetime.strptime(data["current_week"]["start_date"], '%Y-%m-%d')
+            self.end_date = datetime.strptime(data["current_week"]["end_date"], '%Y-%m-%d')
+            self.date_label.config(text=self.get_date_range())
+            self.history_data = data.get("history", [])
+            
+            for row in data["current_week"]["entries"]:
+                self.table.insert("", "end", values=row)
+        else:
+            for row in self.TEMPLATE:
+                self.table.insert("", "end", values=row)
+
+    def edit_cell(self, event):
+        selected_item = self.table.selection()
+        if not selected_item:
+            return
+
+        item = selected_item[0]
+        col = self.table.identify_column(event.x)  # Get the column index (e.g., "#2" for second column)
+        col_index = int(col[1:]) - 1  # Convert to zero-based index
+
+        # Get cell value
+        values = list(self.table.item(item, "values"))
+        old_value = values[col_index]
+
+        # Create an entry widget at the clicked position
+        entry = tk.Entry(self.table)
+        entry.insert(0, old_value)
+        entry.focus()
+
+        # Get cell coordinates
+        bbox = self.table.bbox(item, col_index)
+        entry.place(x=bbox[0], y=bbox[1], width=bbox[2], height=bbox[3])
+
+        def on_enter(event):
+            values[col_index] = entry.get()
+            self.table.item(item, values=values)
+            entry.destroy()
+            self.recalculate()  # Update bonus calculation after editing
+
+        entry.bind("<Return>", on_enter)
+        entry.bind("<FocusOut>", lambda e: entry.destroy())  # Destroy if focus is lost
+
+    def delete_selected_rows(self, event):
+        selected_items = self.table.selection()
+        for item in selected_items:
+            self.table.delete(item)
+        self.save_data()
+
+
+
+
+
+
+
+
+
+
+
 
 
 class ExcelPage(tk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
 
-        # Configure grid for the frame to expand and center content
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Add a content frame in the center
         content = tk.Frame(self)
         content.pack(expand=True, fill="both")
-        content.grid(row=0, column=0)
 
-        # Add a label
         label = tk.Label(content, text="Editable Excel-Type Sheet", font=("Arial", 18))
         label.pack(pady=10)
 
-        # Define columns (A to J for 10 columns)
-        COLUMN_NAMES = [
-        "Position",
-        "Name",
-        "UID",
-        "Phone",
-        "Activity",
-        "Date Hired",
-        "Hired by",
-        "Crew",
-        "Training",
-        "Notes"
-        ] 
-        self.table = ttk.Treeview(content, columns=[f"Col{i}" for i in range(1, 11)], show="headings", height=10)
+        self.COLUMN_NAMES = [
+            "Position", "Name", "UID", "Phone", "Activity",
+            "Date Hired", "Hired by", "Crew", "Training", "Notes"
+        ]
 
-
+        self.table = ttk.Treeview(content, columns=self.COLUMN_NAMES, show="headings", height=10)
         self.table.pack(expand=True, fill="both")
 
+        for name in self.COLUMN_NAMES:
+            self.table.heading(name, text=name)
+            self.table.column(name, width=100)
+
         self.load_data()
 
-        for i, name in enumerate(COLUMN_NAMES, start=1):
-            self.table.heading(f"Col{i}", text=name)  # Assign custom name to the column
-            self.table.column(f"Col{i}", width=100) 
-
-
-        # Define column headings and widths
-        for i in range(1, 11):
-            self.table.heading(f"Col{i}", text=f"Column {i}")
-            self.table.column(f"Col{i}", width=100)
-
-        # Load saved data or add sample data
-        self.load_data()
-
-        # Add bindings to edit cells
+        # Bind actions
         self.table.bind("<Double-1>", self.edit_cell)
+        self.table.bind("<Delete>", self.delete_selected_rows)
+        self.table.bind("<BackSpace>", self.delete_selected_rows)
 
-        # Add a back button
-        back_button = ttk.Button(content, text="Back to Main Page", command=lambda: parent.show_page("Main"))
-        back_button.pack(pady=10)
+        ttk.Button(content, text="Add Employee", command=self.open_add_employee_popup).pack(pady=5)
+        ttk.Button(content, text="Back to Main Page", command=lambda: parent.show_page("Main")).pack(pady=5)
 
-        
+    def open_add_employee_popup(self):
+        """Opens a popup window for adding a new employee."""
+        popup = tk.Toplevel(self)
+        popup.title("Add Employee")
+        popup.geometry("400x400")
+
+        entries = {}
+
+        for i, name in enumerate(self.COLUMN_NAMES):
+            tk.Label(popup, text=name).grid(row=i, column=0, padx=10, pady=5, sticky="w")
+            entry = tk.Entry(popup)
+            entry.grid(row=i, column=1, padx=10, pady=5, sticky="ew")
+            entries[name] = entry
+
+        def submit():
+            new_employee = [entries[name].get() for name in self.COLUMN_NAMES]
+            self.table.insert("", "end", values=new_employee)
+            self.save_data()
+            popup.destroy()
+
+        ttk.Button(popup, text="Add Employee", command=submit).grid(row=len(self.COLUMN_NAMES), column=0, columnspan=2, pady=10)
+
+    def delete_selected_rows(self, event=None):
+        """Deletes selected rows from the table."""
+        selected_items = self.table.selection()
+        if not selected_items:
+            return
+
+        for item in selected_items:
+            self.table.delete(item)
+
+        self.save_data()
 
     def edit_cell(self, event):
         """Enable cell editing for all columns, with dropdowns for specific ones."""
@@ -149,87 +341,68 @@ class ExcelPage(tk.Frame):
         if not selected_item:
             return
 
-        # Get the clicked column and row
-        col = self.table.identify_column(event.x)  # e.g., '#1' for column 1
+        col = self.table.identify_column(event.x)
         row = self.table.identify_row(event.y)
-
-
-        DROPDOWN_OPTIONS = {
-            0: ["Owner", "Director", "Executive", "Senior Manager", "Manager", "Assistant Manager", "Advisor", "Shift-lead", "Core", "Crew", "Probationary, Retired", "DNH"],  # Column 1 (index 0)
-            5: ["Active", "LOA"],  # Column 6 (index 5)
-            8: ["Completed", "Partial"],  # Column 9 (index 8)
-        }
-
         if not row:
             return
 
-        # Get the column index (1-based) and convert it to 0-based
         column_index = int(col[1:]) - 1
-
-        # Ensure the row has enough values for all 10 columns
         row_values = list(self.table.item(selected_item, "values"))
-        while len(row_values) < 10:  # Add empty values if needed
+
+        while len(row_values) < 10:
             row_values.append("")
 
-        # Check if the column has a dropdown
-        if column_index in DROPDOWN_OPTIONS:
-            # Create a Combobox for dropdown editing
-            combobox = ttk.Combobox(self, values=DROPDOWN_OPTIONS[column_index], state="readonly")
-            combobox.set(row_values[column_index])  # Set current value
-            combobox.place(x=event.x_root - self.winfo_rootx(), y=event.y_root - self.winfo_rooty())
+        DROPDOWN_OPTIONS = {
+            0: ["Owner", "Director", "Executive", "Senior Manager", "Manager", "Assistant Manager", "Advisor", "Shift-lead", "Core", "Crew", "Probationary", "Retired", "DNH"],
+            5: ["Active", "LOA"],
+            8: ["Completed", "Partial"],
+        }
 
-            # Save the updated value
+        x, y, width, height = self.table.bbox(selected_item, col)
+
+        if column_index in DROPDOWN_OPTIONS:
+            combobox = ttk.Combobox(self, values=DROPDOWN_OPTIONS[column_index], state="readonly")
+            combobox.set(row_values[column_index])
+            combobox.place(x=x, y=y + height, width=width)
+
             def save_dropdown(event=None):
-                new_value = combobox.get()
-                row_values[column_index] = new_value  # Update the specific cell value
-                self.table.item(selected_item, values=row_values)  # Save the row back to the table
+                row_values[column_index] = combobox.get()
+                self.table.item(selected_item, values=row_values)
                 combobox.destroy()
-                self.save_data()  # Save data after editing
+                self.save_data()
 
             combobox.bind("<<ComboboxSelected>>", save_dropdown)
             combobox.focus_set()
+
         else:
-            # Create an Entry widget for regular editing
             entry = tk.Entry(self)
             entry.insert(0, row_values[column_index])
-            entry.place(x=event.x_root - self.winfo_rootx(), y=event.y_root - self.winfo_rooty())
+            entry.place(x=x, y=y + height, width=width)
 
-            # Save the updated value
             def save_edit(event=None):
-                new_value = entry.get()
-                row_values[column_index] = new_value  # Update the specific cell value
-                self.table.item(selected_item, values=row_values)  # Save the row back to the table
+                row_values[column_index] = entry.get()
+                self.table.item(selected_item, values=row_values)
                 entry.destroy()
-                self.save_data()  # Save data after editing
+                self.save_data()
 
             entry.bind("<Return>", save_edit)
             entry.focus_set()
 
-
-
     def load_data(self):
         """Load table data from a CSV file."""
-        if os.path.exists(DATA_FILE):  # Check if the data file exists
+        if os.path.exists(DATA_FILE):
             with open(DATA_FILE, "r", newline="") as file:
                 reader = csv.reader(file)
                 for row in reader:
-                    # Ensure each row has exactly 10 columns
                     while len(row) < 10:
                         row.append("")
-                    self.table.insert("", "end", values=row)  # Insert row into table
-        else:
-            # If no data file exists, add sample rows
-            for i in range(10):  # Default rows for visualization
-                self.table.insert("", "end", values=[f"Sample {i+1} Col {j}" for j in range(1, 11)])
-
-
+                    self.table.insert("", "end", values=row)
 
     def save_data(self):
         """Save table data to a CSV file."""
         rows = []
         for item in self.table.get_children():
             row_values = list(self.table.item(item, "values"))
-            # Ensure each row has exactly 10 columns
             while len(row_values) < 10:
                 row_values.append("")
             rows.append(row_values)
@@ -239,10 +412,6 @@ class ExcelPage(tk.Frame):
             writer.writerows(rows)
 
 
-
-
 # Create the application
 app = App()
-
-# Run the application
 app.mainloop()
