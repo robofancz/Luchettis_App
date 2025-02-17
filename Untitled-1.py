@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import ttk
 from datetime import datetime, timedelta
 
-DATA_FILE = "table_data.csv"  # File to save and load table data
+ROSTER_DATA_FILE = "table_data.csv"  # File to save and load table data
 MANAGER_BONUS_FILE = ""
 BONUS_EMPLOYEE_DATA = "bonus_employee_data.json"
 
@@ -381,8 +381,8 @@ class ExcelPage(tk.Frame):
 
     def load_data(self):
         """Load table data from a CSV file."""
-        if os.path.exists(DATA_FILE):
-            with open(DATA_FILE, "r", newline="") as file:
+        if os.path.exists(ROSTER_DATA_FILE):
+            with open(ROSTER_DATA_FILE, "r", newline="") as file:
                 reader = csv.reader(file)
                 for row in reader:
                     while len(row) < 10:
@@ -398,13 +398,14 @@ class ExcelPage(tk.Frame):
                 row_values.append("")
             rows.append(row_values)
 
-        with open(DATA_FILE, "w", newline="") as file:
+        with open(ROSTER_DATA_FILE, "w", newline="") as file:
             writer = csv.writer(file)
             writer.writerows(rows)
 
 
 
 class BonusPage(tk.Frame):
+    BONUS_EMPLOYEE_DATA = "bonus_employee_data.json"
     TEMPLATE = [
         ["", "", "Top Shop", "$30,000", "No", ""],
         ["", "", "2nd Shop", "$20,000", "No", ""],
@@ -431,7 +432,7 @@ class BonusPage(tk.Frame):
         self.end_date = self.start_date + timedelta(days=6)
         self.date_label = tk.Label(content, text=self.get_date_range(), font=("Arial", 14))
         self.date_label.pack(pady=5)
-        self.COLUMN_NAMES = ["Name", "Time Clocked (Hours)", "Tick Bonus Rate", "Bonus Amount", "Paid", "PayPal", "LOA", "Paid By"]
+        self.COLUMN_NAMES = ["Name", "UID", "Reason", "Bonus Amount", "Paid", "Paid By"]
 
 
         self.table = ttk.Treeview(content, columns=self.COLUMN_NAMES, show="headings", height=10)
@@ -449,6 +450,7 @@ class BonusPage(tk.Frame):
         self.table.bind("<Delete>", self.delete_selected_rows)
         self.table.bind("<BackSpace>", self.delete_selected_rows)
 
+        ttk.Button(content, text="Add Bonuses", command=self.add_bonus).pack(pady=5)
         ttk.Button(content, text="New Week", command=self.new_week).pack(pady=5)
         ttk.Button(content, text="History", command=self.show_history).pack(pady=5)
         ttk.Button(content, text="Back to Main Page", command=lambda: parent.show_page("Main")).pack(pady=5)
@@ -457,11 +459,41 @@ class BonusPage(tk.Frame):
         return f"Week: {self.start_date.strftime('%m/%d/%Y')} - {self.end_date.strftime('%m/%d/%Y')}"
 
     def load_data(self):
-        if os.path.exists(BONUS_EMPLOYEE_DATA):
-            with open(BONUS_EMPLOYEE_DATA, "r", newline="") as file:
-                reader = csv.reader(file)
-                for row in reader:
-                    self.table.insert("", "end", values=row)
+        if os.path.exists(self.BONUS_EMPLOYEE_DATA):
+            with open(self.BONUS_EMPLOYEE_DATA, "r") as f:
+                data = json.load(f)
+            
+            self.start_date = datetime.strptime(data["current_week"]["start_date"], '%Y-%m-%d')
+            self.end_date = datetime.strptime(data["current_week"]["end_date"], '%Y-%m-%d')
+            self.date_label.config(text=self.get_date_range())
+            self.history_data = data.get("history", [])
+            
+            for row in data["current_week"]["entries"]:
+                self.table.insert("", "end", values=row)
+        else:
+            for row in self.TEMPLATE:
+                self.table.insert("", "end", values=row)
+
+    def add_bonus(self):
+        popup = tk.Toplevel(self)
+        popup.title("Add Bonus")
+        popup.geometry("400x400")
+
+        entries = {}
+
+        for i, name in enumerate(self.COLUMN_NAMES):
+            tk.Label(popup, text=name).grid(row=i, column=0, padx=10, pady=5, sticky="w")
+            entry = tk.Entry(popup)
+            entry.grid(row=i, column=1, padx=10, pady=5, sticky="ew")
+            entries[name] = entry
+
+        def submit():
+            new_bonus = [entries[name].get() for name in self.COLUMN_NAMES]
+            self.table.insert("", "end", values=new_bonus)
+            self.save_data()
+            popup.destroy()
+
+        ttk.Button(popup, text="Add Bonus", command=submit).grid(row=len(self.COLUMN_NAMES), column=0, columnspan=2, pady=10)
 
     def new_week(self):
         week_data = {
@@ -511,48 +543,62 @@ class BonusPage(tk.Frame):
                 history_table.insert("", "end", values=row)
 
 
+
     def edit_cell(self, event):
-        selected_item = self.table.selection()
+        """Enable cell editing for all columns, with dropdowns for specific ones."""
+        selected_item = self.table.focus()
         if not selected_item:
             return
+
+        col = self.table.identify_column(event.x)
+        row = self.table.identify_row(event.y)
+        if not row:
+            return
+
+        column_index = int(col[1:]) - 1
+        row_values = list(self.table.item(selected_item, "values"))
+
+        while len(row_values) < 10:
+            row_values.append("")
 
         DROPDOWN_OPTIONS = {
             4: ["Yes", "No"],
             6: ["Active", "LOA"],
-            7: ["Myles Cherry", "Tommy Kade", "Carissa SL-Cherry", "Luna Kade", "BigKing HMDollas", "Blake Cherry", "Chip Monck", "Ling Cherry", "Jack Slater", "Bart", "Tommy Longsocks"]
+            7: ["Dexter Cherry", "Myles Cherry", "Tommy Kade", "Carissa SL-Cherry", "Luna Kade", "BigKing HMDollas", "Blake Cherry", "Chip Monck", "Ling Cherry", "Jack Slater", "Bart", "Tommy Longsocks"]
         }
 
-        item = selected_item[0]
-        col = self.table.identify_column(event.x)  # Get the column index (e.g., "#2" for second column)
-        col_index = int(col[1:]) - 1  # Convert to zero-based index
+        x, y, width, height = self.table.bbox(selected_item, col)
 
-        # Get cell value
-        values = list(self.table.item(item, "values"))
-        old_value = values[col_index]
+        if column_index in DROPDOWN_OPTIONS:
+            combobox = ttk.Combobox(self, values=DROPDOWN_OPTIONS[column_index], state="readonly")
+            combobox.set(row_values[column_index])
+            combobox.place(x=x, y=y + height, width=width)
 
-        # Create an entry widget at the clicked position
-        entry = tk.Entry(self.table)
-        entry.insert(0, old_value)
-        entry.focus()
+            def save_dropdown(event=None):
+                row_values[column_index] = combobox.get()
+                self.table.item(selected_item, values=row_values)
+                combobox.destroy()
+                self.save_data()
 
-        # Get cell coordinates
-        bbox = self.table.bbox(item, col_index)
-        entry.place(x=bbox[0], y=bbox[1], width=bbox[2], height=bbox[3])
+            combobox.bind("<<ComboboxSelected>>", save_dropdown)
+            combobox.focus_set()
 
-        def on_enter(event):
-            values[col_index] = entry.get()
-            self.table.item(item, values=values)
-            entry.destroy()
-            self.recalculate()  # Update bonus calculation after editing
+        else:
+            entry = tk.Entry(self)
+            entry.insert(0, row_values[column_index])
+            entry.place(x=x, y=y + height, width=width)
 
-        entry.bind("<Return>", on_enter)
-        entry.bind("<FocusOut>", lambda e: entry.destroy())  # Destroy if focus is lost
+            def save_edit(event=None):
+                row_values[column_index] = entry.get()
+                self.table.item(selected_item, values=row_values)
+                entry.destroy()
+                self.save_data()
 
-    def delete_selected_rows(self, event):
-        selected_items = self.table.selection()
-        for item in selected_items:
-            self.table.delete(item)
-        self.save_data()
+            entry.bind("<Return>", save_edit)
+            entry.focus_set()
+
+
+    
 
 
     def recalculate(self):
@@ -574,11 +620,50 @@ class BonusPage(tk.Frame):
             row_values = list(self.table.item(item, "values"))
             rows.append(row_values)
 
-        with open(DATA_FILE, "w", newline="") as file:
+        with open(BONUS_EMPLOYEE_DATA, "w", newline="") as file:
             writer = csv.writer(file)
             writer.writerows(rows)
 
+    def delete_selected_rows(self, event=None):
+        """Deletes selected rows from the table."""
+        selected_items = self.table.selection()
+        if not selected_items:
+            return
 
+        for item in selected_items:
+            self.table.delete(item)
+
+        self.save_data()
+
+    
+# class HR(tk.Frame):
+#     def __init__(self, parent):
+#         super().__init__(parent)
+
+#         self.grid_rowconfigure(0, weight=1)
+#         self.grid_columnconfigure(0, weight=1)
+
+#         content = tk.Frame(self)
+#         content.grid(row=0, column=0, sticky="nsew")
+
+#         label = tk.Label(content, text="HR", font=("Arial", 18))
+#         label.pack(pady=10)
+
+#         self.start_date = datetime.today()
+#         self.end_date = self.start_date + timedelta(days=6)   
+#         self.date_label = tk.Label(content, text=self.get_date_range(), font=("Arial", 14))
+#         self.date_label.pack(pady=5)
+
+#         self.COLUMN_NAMES = ["Name", "Time Clocked (Hours)", "Tick Bonus Rate", "Bonus Amount", "Paid", "PayPal", "LOA", "Paid By"]
+
+#         self.table = ttk.Treeview(content, columns=self.COLUMN_NAMES, show="headings", height=10)
+#         self.table.pack(expand=True, fill="both")
+
+#         for name in self.COLUMN_NAMES:
+#             self.table.heading(name, text=name)
+#             self.table.column(name, width=120)
+
+#         self.history_data = []  # Stores past weeks' data
 
 
 
