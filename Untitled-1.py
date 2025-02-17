@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 DATA_FILE = "table_data.csv"  # File to save and load table data
 MANAGER_BONUS_FILE = ""
+BONUS_EMPLOYEE_DATA = "bonus_employee_data.json"
 
 
 class App(tk.Tk):
@@ -23,6 +24,7 @@ class App(tk.Tk):
         self.add_page("Main", main_page)
         self.add_page("Page1", BonusSheetPage(self))
         self.add_page("Page2", ExcelPage(self))
+        self.add_page("Page3", BonusPage(self))
 
         # Show main page first
         self.show_page("Main")
@@ -57,20 +59,14 @@ class MainPage(tk.Frame):
         ttk.Button(content, text="HR", command=lambda: parent.show_page("Page4")).pack(pady=5)
         ttk.Button(content, text="Farming Bonus calc.", command=lambda: parent.show_page("Page5")).pack(pady=5)
         ttk.Button(content, text="Fund", command=lambda: parent.show_page("Page6")).pack(pady=5)
-#shiftlead
+    #shiftlead
         ttk.Button(content, text="Lucid Eats", command=lambda: parent.show_page("Page7")).pack(pady=5)
         ttk.Button(content, text="Training", command=lambda: parent.show_page("Page8")).pack(pady=5)
-#employee
+    #employee
         ttk.Button(content, text="Ingredience Bought", command=lambda: parent.show_page("Page9")).pack(pady=5)
         ttk.Button(content, text="Cheatsheet", command=lambda: parent.show_page("Page10")).pack(pady=5)
 
 
-
-import tkinter as tk
-from tkinter import ttk
-from datetime import datetime, timedelta
-import json
-import os
 
 class BonusSheetPage(tk.Frame):
     DATA_FILE = "bonus_data.json"
@@ -262,11 +258,6 @@ class BonusSheetPage(tk.Frame):
 
 
 
-
-
-
-
-
 class ExcelPage(tk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
@@ -410,6 +401,186 @@ class ExcelPage(tk.Frame):
         with open(DATA_FILE, "w", newline="") as file:
             writer = csv.writer(file)
             writer.writerows(rows)
+
+
+
+class BonusPage(tk.Frame):
+    TEMPLATE = [
+        ["", "", "Top Shop", "$30,000", "No", ""],
+        ["", "", "2nd Shop", "$20,000", "No", ""],
+        ["", "", "3rd Shop", "$10,000", "No", ""],
+        ["", "", "Top Gather", "$30,000", "No", ""],
+        ["", "", "2nd Gather", "$20,000", "No", ""],
+        ["", "", "3rd Gather", "$10,000", "No", ""],
+        ["", "", "EOTW", "$50,000", "No", ""],
+        ["", "", "SLOTW", "$50,000", "No", ""]
+    ]
+    def __init__(self, parent):
+        super().__init__(parent)
+
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
+        content = tk.Frame(self)
+        content.grid(row=0, column=0, sticky="nsew")
+
+        label = tk.Label(content, text="Bonuses", font=("Arial", 18))
+        label.pack(pady=10)
+
+        self.start_date = datetime.today()
+        self.end_date = self.start_date + timedelta(days=6)
+        self.date_label = tk.Label(content, text=self.get_date_range(), font=("Arial", 14))
+        self.date_label.pack(pady=5)
+        self.COLUMN_NAMES = ["Name", "Time Clocked (Hours)", "Tick Bonus Rate", "Bonus Amount", "Paid", "PayPal", "LOA", "Paid By"]
+
+
+        self.table = ttk.Treeview(content, columns=self.COLUMN_NAMES, show="headings", height=10)
+        self.table.pack(expand=True, fill="both")
+
+        for name in self.COLUMN_NAMES:
+            self.table.heading(name, text=name)
+            self.table.column(name, width=120)
+
+        self.history_data = []  # Stores past weeks' data
+
+        self.load_data()
+
+        self.table.bind("<Double-1>", self.edit_cell)
+        self.table.bind("<Delete>", self.delete_selected_rows)
+        self.table.bind("<BackSpace>", self.delete_selected_rows)
+
+        ttk.Button(content, text="New Week", command=self.new_week).pack(pady=5)
+        ttk.Button(content, text="History", command=self.show_history).pack(pady=5)
+        ttk.Button(content, text="Back to Main Page", command=lambda: parent.show_page("Main")).pack(pady=5)
+
+    def get_date_range(self):
+        return f"Week: {self.start_date.strftime('%m/%d/%Y')} - {self.end_date.strftime('%m/%d/%Y')}"
+
+    def load_data(self):
+        if os.path.exists(BONUS_EMPLOYEE_DATA):
+            with open(BONUS_EMPLOYEE_DATA, "r", newline="") as file:
+                reader = csv.reader(file)
+                for row in reader:
+                    self.table.insert("", "end", values=row)
+
+    def new_week(self):
+        week_data = {
+            "date_range": self.get_date_range(),
+            "entries": [self.table.item(item, "values") for item in self.table.get_children()]
+        }
+        self.history_data.append(week_data)
+        self.save_data()
+
+        self.start_date += timedelta(weeks=1)
+        self.end_date += timedelta(weeks=1)
+        self.date_label.config(text=self.get_date_range())
+        
+        self.table.delete(*self.table.get_children())
+        for row in self.TEMPLATE:
+            self.table.insert("", "end", values=row)
+        
+        self.save_data()
+
+
+    def show_history(self):
+        history_window = tk.Toplevel(self)
+        history_window.title("Bonus History")
+        history_window.geometry("700x500")
+
+        canvas = tk.Canvas(history_window)
+        scrollbar = ttk.Scrollbar(history_window, orient="vertical", command=canvas.yview)
+        frame = tk.Frame(canvas)
+        
+        frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        for week in self.history_data:
+            tk.Label(frame, text=week["date_range"], font=("Arial", 14, "bold")).pack(pady=5)
+            history_table = ttk.Treeview(frame, columns=self.COLUMN_NAMES, show="headings", height=5)
+            history_table.pack(fill="both", padx=10, pady=5)
+
+            for name in self.COLUMN_NAMES:
+                history_table.heading(name, text=name)
+                history_table.column(name, width=120)
+
+            for row in week["entries"]:
+                history_table.insert("", "end", values=row)
+
+
+    def edit_cell(self, event):
+        selected_item = self.table.selection()
+        if not selected_item:
+            return
+
+        DROPDOWN_OPTIONS = {
+            4: ["Yes", "No"],
+            6: ["Active", "LOA"],
+            7: ["Myles Cherry", "Tommy Kade", "Carissa SL-Cherry", "Luna Kade", "BigKing HMDollas", "Blake Cherry", "Chip Monck", "Ling Cherry", "Jack Slater", "Bart", "Tommy Longsocks"]
+        }
+
+        item = selected_item[0]
+        col = self.table.identify_column(event.x)  # Get the column index (e.g., "#2" for second column)
+        col_index = int(col[1:]) - 1  # Convert to zero-based index
+
+        # Get cell value
+        values = list(self.table.item(item, "values"))
+        old_value = values[col_index]
+
+        # Create an entry widget at the clicked position
+        entry = tk.Entry(self.table)
+        entry.insert(0, old_value)
+        entry.focus()
+
+        # Get cell coordinates
+        bbox = self.table.bbox(item, col_index)
+        entry.place(x=bbox[0], y=bbox[1], width=bbox[2], height=bbox[3])
+
+        def on_enter(event):
+            values[col_index] = entry.get()
+            self.table.item(item, values=values)
+            entry.destroy()
+            self.recalculate()  # Update bonus calculation after editing
+
+        entry.bind("<Return>", on_enter)
+        entry.bind("<FocusOut>", lambda e: entry.destroy())  # Destroy if focus is lost
+
+    def delete_selected_rows(self, event):
+        selected_items = self.table.selection()
+        for item in selected_items:
+            self.table.delete(item)
+        self.save_data()
+
+
+    def recalculate(self):
+        for item in self.table.get_children():
+            values = list(self.table.item(item, "values"))
+            try:
+                hours = float(values[1]) if values[1] else 0
+                rate = float(values[2].replace("$", "").replace(",", "")) if values[2] else 0
+                values[3] = f"${rate * 4 * hours:.2f}" if hours >= 10 else "$0.00"
+            except ValueError:
+                values[3] = "$0.00"
+            self.table.item(item, values=values)
+        self.save_data()
+
+
+    def save_data(self):
+        rows = []
+        for item in self.table.get_children():
+            row_values = list(self.table.item(item, "values"))
+            rows.append(row_values)
+
+        with open(DATA_FILE, "w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerows(rows)
+
+
+
+
 
 
 # Create the application
