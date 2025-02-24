@@ -22,9 +22,9 @@ class App(tk.Tk):
         # Add all pages
         main_page = MainPage(self)
         self.add_page("Main", main_page)
-        self.add_page("Page1", BonusSheetPage(self))
-        self.add_page("Page2", ExcelPage(self))
-        self.add_page("Page3", BonusPage(self))
+        self.add_page("Page1", ManagerBonus(self))
+        self.add_page("Page2", EmployeeRoster(self))
+        self.add_page("Page3", EmployeeBonuses(self))
 
         # Show main page first
         self.show_page("Main")
@@ -68,7 +68,7 @@ class MainPage(tk.Frame):
 
 
 
-class BonusSheetPage(tk.Frame):
+class ManagerBonus(tk.Frame):
     DATA_FILE = "bonus_data.json"
     TEMPLATE = [
         ["Myles Cherry", "", "$3,000", "", "", "61709", "", ""],
@@ -258,7 +258,7 @@ class BonusSheetPage(tk.Frame):
 
 
 
-class ExcelPage(tk.Frame):
+class EmployeeRoster(tk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
 
@@ -404,7 +404,7 @@ class ExcelPage(tk.Frame):
 
 
 
-class BonusPage(tk.Frame):
+class EmployeeBonuses(tk.Frame):
     BONUS_EMPLOYEE_DATA = "bonus_employee_data.json"
     TEMPLATE = [
         ["", "", "Top Shop", "$30,000", "No", ""],
@@ -458,21 +458,6 @@ class BonusPage(tk.Frame):
     def get_date_range(self):
         return f"Week: {self.start_date.strftime('%m/%d/%Y')} - {self.end_date.strftime('%m/%d/%Y')}"
 
-    def load_data(self):
-        if os.path.exists(self.BONUS_EMPLOYEE_DATA):
-            with open(self.BONUS_EMPLOYEE_DATA, "r") as f:
-                data = json.load(f)
-            
-            self.start_date = datetime.strptime(data["current_week"]["start_date"], '%Y-%m-%d')
-            self.end_date = datetime.strptime(data["current_week"]["end_date"], '%Y-%m-%d')
-            self.date_label.config(text=self.get_date_range())
-            self.history_data = data.get("history", [])
-            
-            for row in data["current_week"]["entries"]:
-                self.table.insert("", "end", values=row)
-        else:
-            for row in self.TEMPLATE:
-                self.table.insert("", "end", values=row)
 
     def add_bonus(self):
         popup = tk.Toplevel(self)
@@ -614,15 +599,6 @@ class BonusPage(tk.Frame):
         self.save_data()
 
 
-    def save_data(self):
-        rows = []
-        for item in self.table.get_children():
-            row_values = list(self.table.item(item, "values"))
-            rows.append(row_values)
-
-        with open(BONUS_EMPLOYEE_DATA, "w", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerows(rows)
 
     def delete_selected_rows(self, event=None):
         """Deletes selected rows from the table."""
@@ -635,6 +611,34 @@ class BonusPage(tk.Frame):
 
         self.save_data()
 
+
+    def save_data(self):
+        data = {
+            "current_week": {
+                "start_date": self.start_date.strftime('%Y-%m-%d'),
+                "end_date": self.end_date.strftime('%Y-%m-%d'),
+                "entries": [self.table.item(item, "values") for item in self.table.get_children()]
+            },
+            "history": self.history_data
+        }
+        with open(self.BONUS_EMPLOYEE_DATA, "w") as f:
+            json.dump(data, f)
+    
+    def load_data(self):
+        if os.path.exists(self.BONUS_EMPLOYEE_DATA):
+            with open(self.BONUS_EMPLOYEE_DATA, "r") as f:
+                data = json.load(f)
+            
+            self.start_date = datetime.strptime(data["current_week"]["start_date"], '%Y-%m-%d')
+            self.end_date = datetime.strptime(data["current_week"]["end_date"], '%Y-%m-%d')
+            self.date_label.config(text=self.get_date_range())
+            self.history_data = data.get("history", [])
+            
+            for row in data["current_week"]["entries"]:
+                self.table.insert("", "end", values=row)
+        else:
+            for row in self.TEMPLATE:
+                self.table.insert("", "end", values=row)
     
 # class HR(tk.Frame):
 #     def __init__(self, parent):
